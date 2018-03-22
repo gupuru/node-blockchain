@@ -1,0 +1,14 @@
+{
+  "name": "node-blockchain",
+  "version": "1.0.0",
+  "description": "node blockchain sample",
+  "main": "index.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "author": "gupuru",
+  "license": "MIT",
+  "dependencies": {
+    "crypto-js": "^3.1.9-1"
+  }
+}
