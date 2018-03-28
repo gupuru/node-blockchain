@@ -130,7 +130,77 @@ const initErrorHandler = (ws) => {
     ws.on('error', () => closeConnection(ws));
 };
 
-
 const calculateHashForBlock = (block) => {
     return calculateHash(block.index, block.previousHash, block.timestamp, block.data);
 };
+
+const addBlock = (newBlock) => {
+    if (isValidNewBlock(newBlock, getLatestBlock())) {
+        blockchain.push(newBlock);
+    }  
+};
+
+const connectToPeers = (newPeers) => {
+    newPeers.forEach(peer => {
+        const ws = new WebSocket(peer);
+        ws.on('open', () => initConnection(ws));
+        ws.on('error', () => {
+            console.log('connection failed');
+        });
+    });
+};
+
+const handleBlockchainResponse = (message) => {
+    const receivedBlocks = JSON.parse(message.data).sort((block1, block2) => (block1.index - block2.index));
+    const latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
+    const latestBlockHeld = getLatestBlock();
+    if (latestBlockReceived.index > latestBlockHeld.index) {
+        console.log('blockchain possibly behind. We got: ' + latestBlockHeld.index + ' Peer got: ' + latestBlockReceived.index);
+        if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
+            console.log("We can append the received block to our chain");
+            blockchain.push(latestBlockReceived);
+            broadcast(responseLatestMsg());
+        } else if (receivedBlocks.length === 1) {
+            console.log("We have to query the chain from our peer");
+            broadcast(queryAllMsg());
+        } else {
+            console.log("Received blockchain is longer than current blockchain");
+            replaceChain(receivedBlocks);
+        }
+    } else {
+        console.log('received blockchain is not longer than current blockchain. Do nothing');
+    }
+};
+
+const isValidChain = (blockchainToValidate) => {
+    if (JSON.stringify(blockchainToValidate[0]) !== JSON.stringify(getGenesisBlock())) {
+        return false;
+    }
+    const tempBlocks = [blockchainToValidate[0]];
+    for (var i = 1; i < blockchainToValidate.length; i++) {
+        if (isValidNewBlock(blockchainToValidate[i], tempBlocks[i - 1])) {
+            tempBlocks.push(blockchainToValidate[i]);
+        } else {
+            return false;
+        }
+    }
+    return true;
+};
+
+const getLatestBlock = () => blockchain[blockchain.length - 1];
+const queryChainLengthMsg = () => ({'type': MessageType.QUERY_LATEST});
+const queryAllMsg = () => ({'type': MessageType.QUERY_ALL});
+const responseChainMsg = () =>({
+    'type': MessageType.RESPONSE_BLOCKCHAIN, 'data': JSON.stringify(blockchain)
+});
+const responseLatestMsg = () => ({
+    'type': MessageType.RESPONSE_BLOCKCHAIN,
+    'data': JSON.stringify([getLatestBlock()])
+});
+
+const write = (ws, message) => ws.send(JSON.stringify(message));
+const broadcast = (message) => sockets.forEach(socket => write(socket, message));
+
+connectToPeers(initialPeers);
+initHttpServer();
+initP2PServer();
